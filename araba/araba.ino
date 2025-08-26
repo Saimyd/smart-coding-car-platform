@@ -20,14 +20,14 @@
 #include <FirebaseESP32.h>
 
 // Wi-Fi Ağ Ayarları - Kendi ağ bilgilerinizi girin
-const char* WIFI_SSID = "SAİM";           // Wi-Fi ağ adı
-const char* WIFI_PASSWORD = "12345678";    // Wi-Fi şifresi
+const char* WIFI_SSID = "YOUR_WIFI_NAME";     // Wi-Fi ağ adı
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";  // Wi-Fi şifresi
 
 // Firebase Proje Ayarları - Kendi Firebase bilgilerinizi girin
-const char* API_KEY = "AIzaSyDk7511OqPNNTwB-o1VXYVGCQ8l8dLsUBM";  // Firebase API anahtarı
-const char* DATABASE_URL = "https://loginproject-19ca4-default-rtdb.firebaseio.com/";  // Firebase database URL'i
-const char* USER_EMAIL = "admin@admin.com";     // Firebase kullanıcı email'i
-const char* USER_PASSWORD = "123456";           // Firebase kullanıcı şifresi
+const char* API_KEY = "YOUR_FIREBASE_API_KEY";  // Firebase API anahtarı
+const char* DATABASE_URL = "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com/";  // Firebase database URL'i
+const char* USER_EMAIL = "your_email@example.com";     // Firebase kullanıcı email'i
+const char* USER_PASSWORD = "your_password";           // Firebase kullanıcı şifresi
 
 // Firebase nesneleri
 FirebaseData firebaseData;  // Firebase veri alışverişi için
