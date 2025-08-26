@@ -1,45 +1,70 @@
+/*
+ * Smart Coding Car Platform - Kodlama Tahtası Modülü
+ * 
+ * Bu kod, fiziksel kodlama bloklarını algılayan ESP32 tabanlı kodlama tahtasını kontrol eder.
+ * Kullanıcılar fiziksel blokları tahtaya takarak arabanın hareketlerini programlayabilir.
+ * 
+ * Özellikler:
+ * - Fiziksel blok algılama (9 farklı komut)
+ * - Wi-Fi bağlantısı ve otomatik yeniden bağlanma
+ * - Firebase ile gerçek zamanlı veri gönderimi
+ * - Debounce koruması (yanlış algılamayı önler)
+ * - Çoklu komut desteği
+ * 
+ * Geliştirici: Smart Coding Car Platform
+ * Tarih: 2024
+ */
+
 #include <WiFi.h>
 #include <Firebase_ESP_Client.h>
-#include <vector> // Vektör kullanımı için
+#include <vector> // Gönderilen blokları takip etmek için vektör kullanımı
 
+/* Wi-Fi Ağ Ayarları - Kendi ağ bilgilerinizi girin */
+#define WIFI_SSID "SAİM"          // Wi-Fi ağ adı
+#define WIFI_PASSWORD "12345678"   // Wi-Fi şifresi
 
-/* Wi-Fi ve Firebase Tanımları */
-#define WIFI_SSID "SAİM"
-#define WIFI_PASSWORD "12345678"
-#define API_KEY "AIzaSyDk7511OqPNNTwB-o1VXYVGCQ8l8dLsUBM"
-#define DATABASE_URL "https://loginproject-19ca4-default-rtdb.firebaseio.com/"
-#define USER_EMAIL "admin@admin.com"
-#define USER_PASSWORD "123456"
+/* Firebase Proje Ayarları - Kendi Firebase bilgilerinizi girin */
+#define API_KEY "AIzaSyDk7511OqPNNTwB-o1VXYVGCQ8l8dLsUBM"  // Firebase API anahtarı
+#define DATABASE_URL "https://loginproject-19ca4-default-rtdb.firebaseio.com/"  // Firebase database URL'i
+#define USER_EMAIL "admin@admin.com"     // Firebase kullanıcı email'i
+#define USER_PASSWORD "123456"           // Firebase kullanıcı şifresi
 
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
+// Firebase nesneleri
+FirebaseData fbdo;      // Firebase veri alışverişi için
+FirebaseAuth auth;      // Firebase kimlik doğrulama için
+FirebaseConfig config;  // Firebase yapılandırma için
 
-// Blokların GPIO pinleri
-#define FORWARD1_PIN 21
-#define FORWARD2_PIN 19
-#define BACKWARD_PIN 22
-#define BACKWARD2_PIN 18
-#define RIGHT_TURN_PIN 32
-#define RIGHT_TURN_PIN2 14
-#define LEFT_TURN_PIN 33
-#define HORN_PIN 25
-#define HEADLIGHT_PIN 23
+// Fiziksel Kodlama Bloklarının GPIO Pin Tanımlamaları
+#define FORWARD1_PIN 21      // İleri git bloğu 1
+#define FORWARD2_PIN 19      // İleri git bloğu 2
+#define BACKWARD_PIN 22      // Geri git bloğu 1
+#define BACKWARD2_PIN 18     // Geri git bloğu 2
+#define RIGHT_TURN_PIN 32    // Sağa dön bloğu 1
+#define RIGHT_TURN_PIN2 14   // Sağa dön bloğu 2
+#define LEFT_TURN_PIN 33     // Sola dön bloğu
+#define HORN_PIN 25          // Korna bloğu
+#define HEADLIGHT_PIN 23     // Far bloğu
 
-// Durum değişkenleri
-std::vector<String> sentBlocks; // Firebase'e gönderilen blokları saklamak için
-unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 200; // 200 ms debounce gecikmesi
+// Sistem Durum Değişkenleri
+std::vector<String> sentBlocks;     // Firebase'e gönderilen blokları takip etmek için
+unsigned long lastDebounceTime = 0; // Son debounce zamanı
+unsigned long debounceDelay = 200;   // 200ms debounce gecikmesi (yanlış algılamayı önler)
 
-// Firebase veri gönderme fonksiyonu
+// ========== FONKSİYON TANIMLARI ==========
+
+/**
+ * Firebase'e komut gönderen fonksiyon
+ * @param path: Firebase veritabanındaki veri yolu
+ * @param state: Gönderilecek değer (0 veya 1)
+ */
 void sendCommandToFirebase(String path, int state) {
   if (Firebase.RTDB.setInt(&fbdo, path, state)) {
-    Serial.print("Veri gönderildi -> ");
+    Serial.print("✓ Komut gönderildi -> ");
     Serial.print(path);
     Serial.print(": ");
     Serial.println(state);
   } else {
-    Serial.print("Hata: ");
+    Serial.print("✗ Firebase Hatası: ");
     Serial.println(fbdo.errorReason());
   }
 }
@@ -132,51 +157,70 @@ void ensureWiFiConnection() {
   }
 }
 
+/**
+ * Başlangıç kurulum fonksiyonu
+ * Tüm pin ayarlarını, Wi-Fi ve Firebase bağlantılarını kurar
+ */
 void setup() {
+  // Seri haberleşmeyi başlat
   Serial.begin(115200);
+  Serial.println("\n=== Smart Coding Car Platform - Kodlama Tahtası ===");
+  Serial.println("Sistem başlatılıyor...");
 
-  // Blok pinlerini giriş olarak ayarla
-  pinMode(FORWARD1_PIN, INPUT_PULLUP);
-  pinMode(FORWARD2_PIN, INPUT_PULLUP);
-  pinMode(BACKWARD_PIN, INPUT_PULLUP);
-  pinMode(BACKWARD2_PIN, INPUT_PULLUP);
-  pinMode(RIGHT_TURN_PIN, INPUT_PULLUP);
-  pinMode(RIGHT_TURN_PIN2, INPUT_PULLUP);
-  pinMode(LEFT_TURN_PIN, INPUT_PULLUP);
-  pinMode(HORN_PIN, INPUT_PULLUP);
-  pinMode(HEADLIGHT_PIN, INPUT_PULLUP);
+  // Fiziksel blok pinlerini giriş olarak ayarla (INPUT_PULLUP ile)
+  // INPUT_PULLUP: Pin normalde HIGH, blok takıldığında LOW olur
+  pinMode(FORWARD1_PIN, INPUT_PULLUP);   // İleri git bloğu 1
+  pinMode(FORWARD2_PIN, INPUT_PULLUP);   // İleri git bloğu 2
+  pinMode(BACKWARD_PIN, INPUT_PULLUP);   // Geri git bloğu 1
+  pinMode(BACKWARD2_PIN, INPUT_PULLUP);  // Geri git bloğu 2
+  pinMode(RIGHT_TURN_PIN, INPUT_PULLUP); // Sağa dön bloğu 1
+  pinMode(RIGHT_TURN_PIN2, INPUT_PULLUP);// Sağa dön bloğu 2
+  pinMode(LEFT_TURN_PIN, INPUT_PULLUP);  // Sola dön bloğu
+  pinMode(HORN_PIN, INPUT_PULLUP);       // Korna bloğu
+  pinMode(HEADLIGHT_PIN, INPUT_PULLUP);  // Far bloğu
+  
+  Serial.println("✓ Blok pinleri ayarlandı");
 
-  // Wi-Fi bağlantısı
-  Serial.print("Wi-Fi'ye bağlanılıyor...");
+  // Wi-Fi bağlantısını kur
+  Serial.print("Wi-Fi'ye bağlanılıyor");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   unsigned long startAttemptTime = millis();
 
+  // 10 saniye boyunca bağlantı dene
   while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
     delay(500);
-    Serial.print("...");
+    Serial.print(".");
   }
 
+  // Wi-Fi bağlantı durumunu kontrol et
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Wi-Fi bağlantısı sağlanamadı!");
+    Serial.println("\n✗ Wi-Fi bağlantısı sağlanamadı!");
   } else {
-    Serial.println("\nWi-Fi bağlantısı kuruldu.");
+    Serial.println("\n✓ Wi-Fi bağlantısı kuruldu");
     Serial.println("IP Adresi: " + WiFi.localIP().toString());
-    WiFi.setSleep(false);
-    Serial.println("Wi-Fi güç tasarrufu modu devre dışı bırakıldı.");
+    WiFi.setSleep(false);  // Güç tasarrufu modunu kapat (daha stabil bağlantı için)
+    Serial.println("✓ Wi-Fi güç tasarrufu modu devre dışı bırakıldı");
   }
 
-  // Firebase ayarları
+  // Firebase bağlantısını kur
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
-  Firebase.reconnectNetwork(true);
+  Firebase.reconnectNetwork(true);  // Ağ bağlantısı kesilirse otomatik yeniden bağlan
   Firebase.begin(&config, &auth);
-  Serial.println("Firebase bağlantısı kuruldu.");
+  Serial.println("✓ Firebase bağlantısı kuruldu");
+  
+  Serial.println("\n🚀 Kodlama tahtası hazır! Blokları takabilirsiniz...");
+  Serial.println("==========================================\n");
 }
 
+/**
+ * Ana döngü fonksiyonu
+ * Wi-Fi bağlantısını kontrol eder ve blokları sürekli tarar
+ */
 void loop() {
-  ensureWiFiConnection();
-  checkAndSendBlocks();
-  delay(500); // Döngüde daha fazla gecikme olmaması için
+  ensureWiFiConnection();  // Wi-Fi bağlantısını kontrol et
+  checkAndSendBlocks();    // Blokları kontrol et ve komutları gönder
+  delay(500);              // CPU yükünü azaltmak için kısa bekleme
 }

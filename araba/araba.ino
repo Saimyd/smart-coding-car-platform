@@ -1,86 +1,149 @@
+/*
+ * Smart Coding Car Platform - Araba Kontrol Modülü
+ * 
+ * Bu kod, ESP32 tabanlı akıllı arabanın hareket kontrolünü sağlar.
+ * Firebase Realtime Database üzerinden gelen komutları alır ve
+ * arabayı buna göre hareket ettirir.
+ * 
+ * Özellikler:
+ * - Wi-Fi bağlantısı
+ * - Firebase ile gerçek zamanlı veri alışverişi
+ * - Motor kontrolü (ileri, geri, sağa, sola)
+ * - Buzzer kontrolü (korna)
+ * - LED kontrolü (farlar)
+ * 
+ * Geliştirici: Smart Coding Car Platform
+ * Tarih: 2024
+ */
+
 #include <WiFi.h>
 #include <FirebaseESP32.h>
 
-// Wi-Fi Ayarları
-const char* WIFI_SSID = "SAİM";
-const char* WIFI_PASSWORD = "12345678";
+// Wi-Fi Ağ Ayarları - Kendi ağ bilgilerinizi girin
+const char* WIFI_SSID = "SAİM";           // Wi-Fi ağ adı
+const char* WIFI_PASSWORD = "12345678";    // Wi-Fi şifresi
 
-// Firebase Ayarları
-const char* API_KEY = "AIzaSyDk7511OqPNNTwB-o1VXYVGCQ8l8dLsUBM"; 
-const char* DATABASE_URL = "https://loginproject-19ca4-default-rtdb.firebaseio.com/";
-const char* USER_EMAIL = "admin@admin.com";
-const char* USER_PASSWORD = "123456";
+// Firebase Proje Ayarları - Kendi Firebase bilgilerinizi girin
+const char* API_KEY = "AIzaSyDk7511OqPNNTwB-o1VXYVGCQ8l8dLsUBM";  // Firebase API anahtarı
+const char* DATABASE_URL = "https://loginproject-19ca4-default-rtdb.firebaseio.com/";  // Firebase database URL'i
+const char* USER_EMAIL = "admin@admin.com";     // Firebase kullanıcı email'i
+const char* USER_PASSWORD = "123456";           // Firebase kullanıcı şifresi
 
-FirebaseData firebaseData;
-FirebaseAuth auth;
-FirebaseConfig config;
+// Firebase nesneleri
+FirebaseData firebaseData;  // Firebase veri alışverişi için
+FirebaseAuth auth;          // Firebase kimlik doğrulama için
+FirebaseConfig config;      // Firebase yapılandırma için
 
-// Motor, Buzzer ve LED Pinleri
-const int IN1 = 12;
-const int IN2 = 13;
-const int IN3 = 25;
-const int IN4 = 27;
-const int BUZZER_PIN = 14;
-const int HEADLIGHTS_PIN = 26; // Headlights için LED pini
-int forward1 = 0, forward2 = 0, backward2 = 0, left2 = 0, right2 = 0, backward = 0, left = 0, right = 0, horn = 0, headlights = 0;
+// Motor Sürücü Pin Tanımlamaları (L298N)
+const int IN1 = 12;  // Sol motor ileri pini
+const int IN2 = 13;  // Sol motor geri pini
+const int IN3 = 25;  // Sağ motor ileri pini
+const int IN4 = 27;  // Sağ motor geri pini
 
+// Diğer Donanım Pin Tanımlamaları
+const int BUZZER_PIN = 14;      // Buzzer (korna) pini
+const int HEADLIGHTS_PIN = 26;  // LED farlar pini
+
+// Hareket komut değişkenleri - Firebase'den alınan değerler
+int forward1 = 0, forward2 = 0;     // İleri git komutları
+int backward = 0, backward2 = 0;    // Geri git komutları
+int left = 0, left2 = 0;           // Sola dön komutları
+int right = 0, right2 = 0;         // Sağa dön komutları
+int horn = 0;                      // Korna komutu
+int headlights = 0;                // Far komutu
+
+/**
+ * Başlangıç kurulum fonksiyonu
+ * Bu fonksiyon sadece bir kez çalışır ve tüm başlangıç ayarlarını yapar
+ */
 void setup() {
+  // Seri haberleşmeyi başlat (hata ayıklama için)
   Serial.begin(115200);
+  Serial.println("Smart Coding Car Platform başlatılıyor...");
+  
+  // Motor kontrol pinlerini çıkış olarak ayarla
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-  pinMode(HEADLIGHTS_PIN, OUTPUT); // Headlights pinini çıkış birimi olarak ayarla
   
+  // Buzzer ve LED pinlerini çıkış olarak ayarla
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(HEADLIGHTS_PIN, OUTPUT);
+  
+  // Wi-Fi bağlantısını başlat
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Wi-Fi'ye bağlanılıyor");
+  
+  // Wi-Fi bağlantısı kurulana kadar bekle
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
   }
   Serial.println();
-  Serial.println("Wi-Fi'ye bağlandı");
+  Serial.println("Wi-Fi'ye başarıyla bağlandı!");
+  Serial.print("IP Adresi: ");
+  Serial.println(WiFi.localIP());
 
+  // Firebase yapılandırmasını ayarla
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
 
+  // Firebase bağlantısını başlat
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
+  
+  Serial.println("Firebase bağlantısı kuruldu!");
+  Serial.println("Araba hazır - komutlar bekleniyor...");
 }
 
+/**
+ * Ana döngü fonksiyonu
+ * Bu fonksiyon sürekli çalışır ve Firebase'den komutları alarak arabayı kontrol eder
+ */
 void loop() {
+  // Firebase'den tüm hareket komutlarını oku
   
-
+  // İleri git komutlarını kontrol et
   if (Firebase.getInt(firebaseData, "/araba/forward1")) {
     forward1 = firebaseData.intData();
   }
-    if (Firebase.getInt(firebaseData, "/araba/forward2")) {
+  if (Firebase.getInt(firebaseData, "/araba/forward2")) {
     forward2 = firebaseData.intData();
   }
+  
+  // Geri git komutlarını kontrol et
   if (Firebase.getInt(firebaseData, "/araba/backward")) {
     backward = firebaseData.intData();
   }
-    if (Firebase.getInt(firebaseData, "/araba/backward2")) {
+  if (Firebase.getInt(firebaseData, "/araba/backward2")) {
     backward2 = firebaseData.intData();
   }
+  
+  // Sola dön komutlarını kontrol et
   if (Firebase.getInt(firebaseData, "/araba/left")) {
     left = firebaseData.intData();
   }
   if (Firebase.getInt(firebaseData, "/araba/left2")) {
     left2 = firebaseData.intData();
   }
+  
+  // Sağa dön komutlarını kontrol et
   if (Firebase.getInt(firebaseData, "/araba/right")) {
     right = firebaseData.intData();
   }
-   if (Firebase.getInt(firebaseData, "/araba/right2")) {
+  if (Firebase.getInt(firebaseData, "/araba/right2")) {
     right2 = firebaseData.intData();
   }
+  
+  // Korna komutunu kontrol et
   if (Firebase.getInt(firebaseData, "/araba/horn")) {
     horn = firebaseData.intData();
   }
+  
+  // Far komutunu kontrol et
   if (Firebase.getInt(firebaseData, "/araba/headlights")) {
     headlights = firebaseData.intData();
   }
@@ -152,55 +215,102 @@ void loop() {
   delay(1000); // 1 saniye bekle
 }
 
+// ========== MOTOR KONTROL FONKSİYONLARI ==========
+
+/**
+ * Arabayı ileri hareket ettirir
+ * Her iki motoru da ileri yönde çalıştırır
+ */
 void ileri() {
-  digitalWrite(IN1, HIGH);
+  digitalWrite(IN1, HIGH);  // Sol motor ileri
   digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
+  digitalWrite(IN3, HIGH);  // Sağ motor ileri
   digitalWrite(IN4, LOW);
+  Serial.println("Hareket: İleri");
 }
 
+/**
+ * Arabayı geri hareket ettirir
+ * Her iki motoru da geri yönde çalıştırır
+ */
 void geri() {
-  digitalWrite(IN1, LOW);
+  digitalWrite(IN1, LOW);   // Sol motor geri
   digitalWrite(IN2, HIGH);
-  digitalWrite(IN3, LOW);
+  digitalWrite(IN3, LOW);   // Sağ motor geri
   digitalWrite(IN4, HIGH);
+  Serial.println("Hareket: Geri");
 }
 
+/**
+ * Arabayı sağa döndürür
+ * Sol motoru ileri, sağ motoru geri çalıştırarak sağa dönüş yapar
+ */
 void saga() {
-  digitalWrite(IN1, LOW);
+  digitalWrite(IN1, LOW);   // Sol motor geri
   digitalWrite(IN2, HIGH);
-  digitalWrite(IN3, HIGH);
+  digitalWrite(IN3, HIGH);  // Sağ motor ileri
   digitalWrite(IN4, LOW);
+  Serial.println("Hareket: Sağa Dön");
 }
 
+/**
+ * Arabayı sola döndürür
+ * Sol motoru geri, sağ motoru ileri çalıştırarak sola dönüş yapar
+ */
 void sola() {
-  digitalWrite(IN1, HIGH);
+  digitalWrite(IN1, HIGH);  // Sol motor ileri
   digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
+  digitalWrite(IN3, LOW);   // Sağ motor geri
   digitalWrite(IN4, HIGH);
+  Serial.println("Hareket: Sola Dön");
 }
 
+/**
+ * Arabayı durdurur
+ * Tüm motorları kapatır
+ */
 void dur() {
   digitalWrite(IN1, LOW);
   digitalWrite(IN2, LOW);
   digitalWrite(IN3, LOW);
   digitalWrite(IN4, LOW);
+  Serial.println("Hareket: Dur");
 }
 
+// ========== SES VE IŞIK KONTROL FONKSİYONLARI ==========
+
+/**
+ * Kornayı çalıştırır
+ * 1000 Hz frekansta 500ms süreyle ses çıkarır
+ */
 void kornaCal() {
-  tone(BUZZER_PIN, 1000); // Frekans değeri ayarlandı
-  delay(500);             // Ses süresi ayarlandı
-  noTone(BUZZER_PIN);
+  tone(BUZZER_PIN, 1000);   // 1000 Hz frekansta ses
+  delay(500);               // 500ms süreyle çal
+  noTone(BUZZER_PIN);       // Sesi durdur
+  Serial.println("Ses: Korna Çalındı");
 }
 
+/**
+ * Kornayı susturur
+ */
 void kornaSus() {
   noTone(BUZZER_PIN);
 }
 
+/**
+ * Farları yakar
+ * LED'i HIGH konumuna getirir
+ */
 void acHeadlights() {
   digitalWrite(HEADLIGHTS_PIN, HIGH);
+  Serial.println("Işık: Farlar Açıldı");
 }
 
+/**
+ * Farları kapatır
+ * LED'i LOW konumuna getirir
+ */
 void kapatHeadlights() {
   digitalWrite(HEADLIGHTS_PIN, LOW);
+  Serial.println("Işık: Farlar Kapatıldı");
 }
